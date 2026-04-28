@@ -1,14 +1,15 @@
-from dotenv import load_dotenv
 import json
 import os
 from pathlib import Path
 
 import anaplan_sdk
-import crypto
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 
+import crypto
+
 TOKEN_PATH = Path(".token.json")
-FILENAME = Path (".token")
+FILENAME = Path(".token")
 load_dotenv()
 mcp = FastMCP("plan-agent")
 
@@ -21,8 +22,8 @@ def _refresh_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
     client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
     redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
     my_key = crypto.load_key()
-    json_str = crypto.read_and_decrypt (FILENAME, my_key)
-    token = json.loads (json_str)
+    json_str = crypto.read_and_decrypt(FILENAME, my_key)
+    token = json.loads(json_str)
     refresh_auth = anaplan_sdk.AnaplanRefreshTokenAuth(
         client_id, client_secret, redirect_uri, token
     )
@@ -42,73 +43,72 @@ def me() -> dict:
 
 @mcp.resource("anaplan://workspace/{workspace_id}/models/{model_id}/processes")
 def get_processes(
-        workspace_id: str=os.environ["WORKSPACE_ID"],
-        model_id: str=os.environ["MODEL_ID"]
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
 ) -> str:
     """Return all processes in an Anaplan model.
 
     The Anaplan model is within an Anaplan workspace.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(),
-        workspace_id=workspace_id,
-        model_id=model_id
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
     )
     return json.dumps([proc.model_dump() for proc in client.get_processes()])
 
+
 @mcp.resource("anaplan://workspaces{?search_pattern}")
-def get_workspaces (
-        search_pattern: str | None = None
-) -> str:
+def get_workspaces(search_pattern: str | None = None) -> str:
     """Return all Anaplan workspaces.
 
-        :param search_pattern:  **Caution: This is an undocumented Feature and may behave
-               unpredictably. It requires the Tenant Admin role. For non-admin users, it is
-               ignored.** Optionally filter for specific workspaces. When provided,
-               case-insensitive matches workspaces with names containing this string.
-               You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
-               When None (default), returns all users.
+    :param search_pattern:  **Caution: This is an undocumented Feature and may behave
+           unpredictably. It requires the Tenant Admin role. For non-admin users, it is
+           ignored.** Optionally filter for specific workspaces. When provided,
+           case-insensitive matches workspaces with names containing this string.
+           You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
+           When None (default), returns all users.
     """
-    client = anaplan_sdk.Client(
-        auth=_refresh_auth()
+    client = anaplan_sdk.Client(auth=_refresh_auth())
+    return json.dumps(
+        [ws.model_dump() for ws in client.get_workspaces(search_pattern=search_pattern)]
     )
-    return json.dumps([ws.model_dump() for ws in client.get_workspaces(
-        search_pattern=search_pattern
-    )])
 
-@mcp.resource("anaplan://workspaces/{workspace_id}/models{?only_in_workspace,search_pattern}")
-def get_models (
-        workspace_id: str=os.environ["WORKSPACE_ID"],
-        only_in_workspace: bool = False,
-        search_pattern: str | None = None
+
+@mcp.resource(
+    "anaplan://workspaces/{workspace_id}/models{?only_in_workspace,search_pattern}"
+)
+def get_models(
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    only_in_workspace: bool = False,
+    search_pattern: str | None = None,
 ) -> str:
     """Return all Anaplan models.
 
-        :param only_in_workspace: If True, only lists models in the workspace provided when
-               instantiating the client. If a string is provided, only lists models in the workspace
-               with the given Id. If False (default), lists models in all workspaces the user
-        :param search_pattern:  **Caution: This is an undocumented Feature and may behave
-               unpredictably. It requires the Tenant Admin role. For non-admin users, it is
-               ignored.** Optionally filter for specific models. When provided,
-               case-insensitive matches model names containing this string.
-               You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
-               When None (default), returns all models.
+    :param only_in_workspace: If True, only lists models in the workspace provided when
+           instantiating the client. If a string is provided, only lists models in the workspace
+           with the given Id. If False (default), lists models in all workspaces the user
+    :param search_pattern:  **Caution: This is an undocumented Feature and may behave
+           unpredictably. It requires the Tenant Admin role. For non-admin users, it is
+           ignored.** Optionally filter for specific models. When provided,
+           case-insensitive matches model names containing this string.
+           You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
+           When None (default), returns all models.
     """
-    client = anaplan_sdk.Client(
-        auth=_refresh_auth(),
-        workspace_id=workspace_id
+    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    return json.dumps(
+        [
+            model.model_dump()
+            for model in client.get_models(
+                only_in_workspace=only_in_workspace, search_pattern=search_pattern
+            )
+        ]
     )
-    return json.dumps([model.model_dump() for model in client.get_models(
-        only_in_workspace=only_in_workspace,
-        search_pattern=search_pattern
-    )])
 
 
 @mcp.tool()
 def run_action(
-        action_id: int,
-        workspace_id: str=os.environ["WORKSPACE_ID"],
-        model_id: str=os.environ["MODEL_ID"]
+    action_id: int,
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
 ) -> dict:
     """Run an Anaplan action.
 
@@ -121,9 +121,7 @@ def run_action(
 
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(),
-        workspace_id=workspace_id,
-        model_id=model_id
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
     )
     result = client.run_action(action_id)
     return result.model_dump()

@@ -6,15 +6,16 @@ the MCP server.
 
 """
 
-from dotenv import load_dotenv
 import json
 import os
 from pathlib import Path
 
 import anaplan_sdk
+from dotenv import load_dotenv
+
 import crypto
 
-FILENAME = Path (".token")
+FILENAME = Path(".token")
 load_dotenv()
 CLIENT_ID = os.environ["ANAPLAN_CLIENT_ID"]
 CLIENT_SECRET = os.environ["ANAPLAN_CLIENT_SECRET"]
@@ -34,7 +35,7 @@ def login():
     token = refresh_auth._oauth_token
     json_data = json.dumps(token)
     my_key = crypto.load_key()
-    crypto.encrypt_and_write (FILENAME, json_data, my_key)
+    crypto.encrypt_and_write(FILENAME, json_data, my_key)
 
 
 if __name__ == "__main__":
