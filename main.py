@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 
 import anaplan_sdk
+import crypto
 from fastmcp import FastMCP
 
 TOKEN_PATH = Path(".token.json")
+FILENAME = Path (".token")
 load_dotenv()
 mcp = FastMCP("plan-agent")
 
@@ -18,9 +20,9 @@ def _refresh_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
     client_id = os.environ["ANAPLAN_CLIENT_ID"]
     client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
     redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
-    with open(TOKEN_PATH, "r", encoding="utf-8", newline="") as f:
-        json_str = f.read()
-        token: dict[str, str | int] = json.loads(json_str)
+    my_key = crypto.load_key()
+    json_str = crypto.read_and_decrypt (FILENAME, my_key)
+    token = json.loads (json_str)
     refresh_auth = anaplan_sdk.AnaplanRefreshTokenAuth(
         client_id, client_secret, redirect_uri, token
     )
