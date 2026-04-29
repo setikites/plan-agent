@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import anaplan_sdk
 from dotenv import load_dotenv
@@ -41,7 +42,7 @@ def me() -> dict:
     return client.audit.get_user().model_dump()
 
 
-@mcp.resource("anaplan://workspace/{workspace_id}/models/{model_id}/processes")
+@mcp.resource("anaplan://processes{?workspace_id,model_id}")
 def get_processes(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -54,6 +55,36 @@ def get_processes(
         auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
     )
     return json.dumps([proc.model_dump() for proc in client.get_processes()])
+
+
+@mcp.resource("anaplan://imports{?workspace_id,model_id}")
+def get_imports(
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> str:
+    """Return all imports in an Anaplan model.
+
+    The Anaplan model is within an Anaplan workspace.
+    """
+    client = anaplan_sdk.Client(
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+    )
+    return json.dumps([proc.model_dump() for proc in client.get_imports()])
+
+
+@mcp.resource("anaplan://exports{?workspace_id,model_id}")
+def get_exports(
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> str:
+    """Return all exports in an Anaplan model.
+
+    The Anaplan model is within an Anaplan workspace.
+    """
+    client = anaplan_sdk.Client(
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+    )
+    return json.dumps([proc.model_dump() for proc in client.get_exports()])
 
 
 @mcp.resource("anaplan://workspaces{?search_pattern}")
@@ -104,6 +135,26 @@ def get_models(
     )
 
 
+@mcp.resource("anaplan://models/{model_id}/modules")
+def get_modules(
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> str:
+    """Return all modules in one Anaplan model."""
+    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    return json.dumps([model.model_dump() for model in client.tr.get_modules()])
+
+
+@mcp.resource("anaplan://models/{model_id}/views")
+def get_views(
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> str:
+    """Return all views in one Anaplan model."""
+    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    return json.dumps([model.model_dump() for model in client.tr.get_views()])
+
+
 @mcp.tool()
 def run_action(
     action_id: int,
@@ -118,13 +169,82 @@ def run_action(
     This tool is not recommended for file
     imports or exports or processes that include file imports or
     exports.
-
     """
     client = anaplan_sdk.Client(
         auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
     )
     result = client.run_action(action_id)
     return result.model_dump()
+
+
+@mcp.tool()
+def export_and_download(
+    export_id: int,
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> bytes:
+    """Run an Anaplan export action and download the resulting file.
+
+    This tool is not recommended for process actions because it expects that the export_id and the file_id are the same.  While this is true for export actions, it is not true for processes.
+    """
+    client = anaplan_sdk.Client(
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+    )
+    result = client.export_and_download(export_id)
+    return result
+
+
+@mcp.tool()
+def upload_and_import(
+    file_id: int,
+    content: str | bytes,
+    import_id: int,
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> dict:
+    """Run an Anaplan import action and download the resulting file.
+
+    This tool is not recommended for process actions because it expects that the import_id and the file_id are the same.  While this is true for import actions, it is not true for processes.
+    """
+    client = anaplan_sdk.Client(
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+    )
+    result = client.upload_and_import(
+        file_id=file_id, content=content, action_id=import_id
+    )
+    return result.model_dump()
+
+
+@mcp.tool()
+def update_module_data(
+    module_id: int,
+    data: list[dict[str, Any]],
+    workspace_id: str = os.environ["WORKSPACE_ID"],
+    model_id: str = os.environ["MODEL_ID"],
+) -> str:
+    """Write the passed items to the specified module. If successful,
+    the number of cells changed is returned, if only partially
+    successful or unsuccessful, the response with the according
+    details is returned instead.
+
+    **You can update a maximum of 100,000 cells or 15 MB of data
+    (whichever is lower) in a single request.** You must chunk
+    your data accordingly. This is not done by this SDK, since it
+    is discouraged. For larger imports, you should use the Bulk
+    API instead.
+
+    For more details see: https://anaplan.docs.apiary.io/#UpdateModuleCellData.
+    :param module_id: The ID of the Module.
+    :param data: The data to write to the Module.
+    :return: The number of cells changed or the response with the according error details.
+    """
+    client = anaplan_sdk.Client(
+        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+    )
+    result = client.tr.update_module_data(module_id=module_id, data=data)
+    if isinstance(result, int):
+        return str(result)
+    return json.dumps(result)
 
 
 if __name__ == "__main__":
