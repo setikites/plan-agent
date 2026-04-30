@@ -31,7 +31,10 @@ def _refresh_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
     return refresh_auth
 
 
-@mcp.resource("anaplan://me")
+@mcp.resource(
+    uri="anaplan://me",
+    tags={"user", "integration", "transactional"}
+)
 def me() -> dict:
     """Return the currently authenticated Anaplan user."""
     client = anaplan_sdk.Client(
@@ -42,7 +45,10 @@ def me() -> dict:
     return client.audit.get_user().model_dump()
 
 
-@mcp.resource("anaplan://processes{?workspace_id,model_id}")
+@mcp.resource(
+    uri="anaplan://processes{?workspace_id,model_id}",
+    tags={"action", "process", "integration", "bulk"}
+)
 def get_processes(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -57,7 +63,10 @@ def get_processes(
     return json.dumps([proc.model_dump() for proc in client.get_processes()])
 
 
-@mcp.resource("anaplan://imports{?workspace_id,model_id}")
+@mcp.resource(
+    uri="anaplan://imports{?workspace_id,model_id}",
+    tags={"action", "import", "integration", "bulk"}
+)
 def get_imports(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -72,7 +81,10 @@ def get_imports(
     return json.dumps([proc.model_dump() for proc in client.get_imports()])
 
 
-@mcp.resource("anaplan://exports{?workspace_id,model_id}")
+@mcp.resource(
+    uri="anaplan://exports{?workspace_id,model_id}",
+    tags={"action", "import", "integration", "bulk"}
+)
 def get_exports(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -87,7 +99,10 @@ def get_exports(
     return json.dumps([proc.model_dump() for proc in client.get_exports()])
 
 
-@mcp.resource("anaplan://workspaces{?search_pattern}")
+@mcp.resource(
+    uri="anaplan://workspaces{?search_pattern}",
+    tags={"workspace", "integration", "transactional"}
+)
 def get_workspaces(search_pattern: str | None = None) -> str:
     """Return all Anaplan workspaces.
 
@@ -105,7 +120,8 @@ def get_workspaces(search_pattern: str | None = None) -> str:
 
 
 @mcp.resource(
-    "anaplan://workspaces/{workspace_id}/models{?only_in_workspace,search_pattern}"
+    uri="anaplan://workspaces/{workspace_id}/models{?only_in_workspace,search_pattern}",
+    tags={"model", "integration", "transactional"}
 )
 def get_models(
     workspace_id: str = os.environ["WORKSPACE_ID"],
@@ -135,7 +151,10 @@ def get_models(
     )
 
 
-@mcp.resource("anaplan://models/{model_id}/modules")
+@mcp.resource(
+    uri="anaplan://models/{model_id}/modules",
+    tags={"module", "integration", "transactional"}
+)
 def get_modules(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -145,7 +164,10 @@ def get_modules(
     return json.dumps([model.model_dump() for model in client.tr.get_modules()])
 
 
-@mcp.resource("anaplan://models/{model_id}/views")
+@mcp.resource(
+    uri="anaplan://models/{model_id}/views",
+    tags={"view", "integration", "transactional"}
+)
 def get_views(
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
@@ -155,7 +177,9 @@ def get_views(
     return json.dumps([model.model_dump() for model in client.tr.get_views()])
 
 
-@mcp.tool()
+@mcp.tool(
+    tags={"action", "integration", "bulk"}
+)
 def run_action(
     action_id: int,
     workspace_id: str = os.environ["WORKSPACE_ID"],
@@ -177,7 +201,9 @@ def run_action(
     return result.model_dump()
 
 
-@mcp.tool()
+@mcp.tool(
+    tags={"action", "export", "integration", "bulk"}
+)
 def export_and_download(
     export_id: int,
     workspace_id: str = os.environ["WORKSPACE_ID"],
@@ -194,7 +220,9 @@ def export_and_download(
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    tags={"action", "import", "integration", "bulk"}
+)
 def upload_and_import(
     file_id: int,
     content: str | bytes,
@@ -215,7 +243,9 @@ def upload_and_import(
     return result.model_dump()
 
 
-@mcp.tool()
+@mcp.tool(
+    tags={"update", "integration", "transactional"}
+)
 def update_module_data(
     module_id: int,
     data: list[dict[str, Any]],
