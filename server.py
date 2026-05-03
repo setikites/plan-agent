@@ -1,20 +1,52 @@
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 import anaplan_sdk
 from dotenv import load_dotenv
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 import crypto
 
 TOKEN_PATH = Path(".token.json")
 FILENAME = Path(".token")
 load_dotenv()
+
+
+def _build_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
+    """Build an OAuth2 auth object with automatic token refresh.
+
+    Reads credentials from environment variables and decrypts the stored
+    token file. Called once at server startup via lifespan.
+    """
+    client_id = os.environ["ANAPLAN_CLIENT_ID"]
+    client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
+    redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
+    my_key = crypto.load_key()
+    json_str = crypto.read_and_decrypt(FILENAME, my_key)
+    token = json.loads(json_str)
+    return anaplan_sdk.AnaplanRefreshTokenAuth(
+        client_id, client_secret, redirect_uri, token
+    )
+
+
+@asynccontextmanager
+async def lifespan(server: FastMCP):
+    """Build auth once at startup and share it across all tools and resources.
+
+    AnaplanRefreshTokenAuth handles token refresh automatically, so the single
+    auth instance stays valid for the lifetime of the server process.
+    """
+    auth = _build_auth()
+    yield {"auth": auth}
+
+
 mcp = FastMCP(
     "plan-agent",
-    instructions = """Interact with objects in an Anaplan cloud tenant
+    lifespan=lifespan,
+    instructions="""Interact with objects in an Anaplan cloud tenant
     to support planning, forecasting, and budgeting activity.
 
     Here are how the objects relate to one another:
@@ -47,30 +79,14 @@ mcp = FastMCP(
 )
 
 
-def _refresh_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
-    """Complete OAuth2 authentication
-    returns subclass of httpx.Auth including automatic refresh mechanism
-    """
-    client_id = os.environ["ANAPLAN_CLIENT_ID"]
-    client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
-    redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
-    my_key = crypto.load_key()
-    json_str = crypto.read_and_decrypt(FILENAME, my_key)
-    token = json.loads(json_str)
-    refresh_auth = anaplan_sdk.AnaplanRefreshTokenAuth(
-        client_id, client_secret, redirect_uri, token
-    )
-    return refresh_auth
-
-
 @mcp.resource(
     uri="anaplan://me",
     tags={"user", "integration", "transactional"}
 )
-def me() -> dict:
+def me(ctx: Context) -> dict:
     """Return the currently authenticated Anaplan user."""
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(),
+        auth=ctx.lifespan_context["auth"],
         workspace_id=os.environ["WORKSPACE_ID"],
         model_id=os.environ["MODEL_ID"],
     )
@@ -82,6 +98,7 @@ def me() -> dict:
     tags={"action", "process", "integration", "bulk"}
 )
 def get_processes(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
@@ -90,7 +107,7 @@ def get_processes(
     The Anaplan model is within an Anaplan workspace.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     return json.dumps([proc.model_dump() for proc in client.get_processes()])
 
@@ -100,6 +117,7 @@ def get_processes(
     tags={"action", "import", "integration", "bulk"}
 )
 def get_imports(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
@@ -108,7 +126,7 @@ def get_imports(
     The Anaplan model is within an Anaplan workspace.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     return json.dumps([proc.model_dump() for proc in client.get_imports()])
 
@@ -118,6 +136,7 @@ def get_imports(
     tags={"action", "import", "integration", "bulk"}
 )
 def get_exports(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
@@ -126,7 +145,7 @@ def get_exports(
     The Anaplan model is within an Anaplan workspace.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     return json.dumps([proc.model_dump() for proc in client.get_exports()])
 
@@ -135,7 +154,7 @@ def get_exports(
     uri="anaplan://workspaces{?search_pattern}",
     tags={"workspace", "integration", "transactional"}
 )
-def get_workspaces(search_pattern: str | None = None) -> str:
+def get_workspaces(ctx: Context, search_pattern: str | None = None) -> str:
     """Return all Anaplan workspaces.
 
     :param search_pattern:  **Caution: This is an undocumented Feature and may behave
@@ -145,7 +164,7 @@ def get_workspaces(search_pattern: str | None = None) -> str:
            You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
            When None (default), returns all users.
     """
-    client = anaplan_sdk.Client(auth=_refresh_auth())
+    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"])
     return json.dumps(
         [ws.model_dump() for ws in client.get_workspaces(search_pattern=search_pattern)]
     )
@@ -156,6 +175,7 @@ def get_workspaces(search_pattern: str | None = None) -> str:
     tags={"model", "integration", "transactional"}
 )
 def get_models(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     only_in_workspace: bool = False,
     search_pattern: str | None = None,
@@ -172,7 +192,7 @@ def get_models(
            You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
            When None (default), returns all models.
     """
-    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
     return json.dumps(
         [
             model.model_dump()
@@ -188,11 +208,12 @@ def get_models(
     tags={"module", "integration", "transactional"}
 )
 def get_modules(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
     """Return all modules in one Anaplan model."""
-    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
     return json.dumps([model.model_dump() for model in client.tr.get_modules()])
 
 
@@ -201,11 +222,12 @@ def get_modules(
     tags={"view", "integration", "transactional"}
 )
 def get_views(
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
     """Return all views in one Anaplan model."""
-    client = anaplan_sdk.Client(auth=_refresh_auth(), workspace_id=workspace_id)
+    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
     return json.dumps([model.model_dump() for model in client.tr.get_views()])
 
 
@@ -214,6 +236,7 @@ def get_views(
 )
 def run_action(
     action_id: int,
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> dict:
@@ -227,7 +250,7 @@ def run_action(
     exports.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     result = client.run_action(action_id)
     return result.model_dump()
@@ -238,6 +261,7 @@ def run_action(
 )
 def export_and_download(
     export_id: int,
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> bytes:
@@ -246,7 +270,7 @@ def export_and_download(
     This tool is not recommended for process actions because it expects that the export_id and the file_id are the same.  While this is true for export actions, it is not true for processes.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     result = client.export_and_download(export_id)
     return result
@@ -259,6 +283,7 @@ def upload_and_import(
     file_id: int,
     content: str | bytes,
     import_id: int,
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> dict:
@@ -267,7 +292,7 @@ def upload_and_import(
     This tool is not recommended for process actions because it expects that the import_id and the file_id are the same.  While this is true for import actions, it is not true for processes.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     result = client.upload_and_import(
         file_id=file_id, content=content, action_id=import_id
@@ -281,6 +306,7 @@ def upload_and_import(
 def update_module_data(
     module_id: int,
     data: list[dict[str, Any]],
+    ctx: Context,
     workspace_id: str = os.environ["WORKSPACE_ID"],
     model_id: str = os.environ["MODEL_ID"],
 ) -> str:
@@ -301,7 +327,7 @@ def update_module_data(
     :return: The number of cells changed or the response with the according error details.
     """
     client = anaplan_sdk.Client(
-        auth=_refresh_auth(), workspace_id=workspace_id, model_id=model_id
+        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
     )
     result = client.tr.update_module_data(module_id=module_id, data=data)
     if isinstance(result, int):
