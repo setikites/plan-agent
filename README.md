@@ -13,7 +13,7 @@ Create a .env file or set environment variables with OAuth parameters needed to 
 uv run python login.py
 ```
 ```
-uv run python main.py
+uv run python server.py
 ```
 
 [Sample session with Claude Code](session_2026-04-28.md)

@@ -12,7 +12,39 @@ import crypto
 TOKEN_PATH = Path(".token.json")
 FILENAME = Path(".token")
 load_dotenv()
-mcp = FastMCP("plan-agent")
+mcp = FastMCP(
+    "plan-agent",
+    instructions = """Interact with objects in an Anaplan cloud tenant
+    to support planning, forecasting, and budgeting activity.
+
+    Here are how the objects relate to one another:
+    - Workspaces contain models.
+    - Models contain dimensions like time, versions, and other lists.
+    - Models also contain modules with line items that have cells at
+      every intersection of their dimensions.
+    - Modules contain line items and cells.
+    - Cells for line items with formulas store the result of the formula.
+    - Cells for line items without formulas store data.
+    - Line items have formats, like number, text, date, list item, boolean,
+      or period.
+    - Lists contain list items.
+    - List items have a name and may have a parent or a code.
+    - One list may be the parent of another list, forming a hierarchy.
+    - Time in a model is represented by the model calendar and time ranges.
+    - Actions are used for bulk interaction with a model.
+    - Actions include import, export, delete, sort, and can be combined in
+      sequential processes.
+    - Users interact with apps to view or update data in models.
+    - Apps have pages.
+    - Each page contains cards from a single model.
+    - Cards display data from modules or views.
+    - Modules have views that organize dimensions into pages, rows, and columns.
+    - Module views may also show only part of the data in a module.
+    - Import actions load data from saved views or files into a list or module.
+    - Export actions load data from moduiles or lists into a file.
+    - Files can be uploaded to a model or downloaded from a model.
+    """
+)
 
 
 def _refresh_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
