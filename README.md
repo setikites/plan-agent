@@ -20,6 +20,9 @@ uv run python server.py
 
 ## Testing
 ```
+npx @modelcontextprotocol/inspector uv --directory C:/Users/mooremic/Documents/GitHub/plan-agent/ run python server.py
+```
+```
 {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "manual-test", "version": "1.0.0"}}}
 ```
 ```
