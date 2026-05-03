@@ -14,13 +14,265 @@ TOKEN_PATH = Path(".token.json")
 FILENAME = Path(".token")
 load_dotenv()
 
+CATALOG: dict[str, dict] = {
+    "get_processes": {
+        "description": "Return all processes in an Anaplan model. Processes combine import, export, delete, or sort actions in sequence.",
+        "tags": ["action", "process", "bulk"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID. Defaults to WORKSPACE_ID env var.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID. Defaults to MODEL_ID env var.",
+            },
+        },
+    },
+    "get_imports": {
+        "description": "Return all import actions in an Anaplan model. Import actions load data from files or views into a list or module.",
+        "tags": ["action", "import", "bulk"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "get_exports": {
+        "description": "Return all export actions in an Anaplan model. Export actions write data from modules or lists to a file.",
+        "tags": ["action", "export", "bulk"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "get_workspaces": {
+        "description": "Return all Anaplan workspaces the user can access.",
+        "tags": ["workspace"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "search_pattern": {
+                "type": "string",
+                "required": False,
+                "description": "Case-insensitive substring filter. Supports % and _ wildcards. Requires Tenant Admin role.",
+            },
+        },
+    },
+    "get_models": {
+        "description": "Return all Anaplan models, optionally filtered to a single workspace.",
+        "tags": ["model"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "only_in_workspace": {
+                "type": "boolean",
+                "required": False,
+                "description": "If True, only lists models in the specified workspace. Default: False.",
+            },
+            "search_pattern": {
+                "type": "string",
+                "required": False,
+                "description": "Optional name filter. Requires Tenant Admin role.",
+            },
+        },
+    },
+    "get_modules": {
+        "description": "Return all modules in an Anaplan model. Modules contain line items and cells.",
+        "tags": ["module", "transactional"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "get_views": {
+        "description": "Return all views in an Anaplan model. Views organize module dimensions and may filter data.",
+        "tags": ["view", "transactional"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "run_action": {
+        "description": "Run an Anaplan action by numeric ID. Supports imports, exports, processes, delete, optimize, and sort. Not recommended for file-based imports/exports or processes that include file operations.",
+        "tags": ["action", "bulk"],
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "params": {
+            "action_id": {
+                "type": "integer",
+                "required": True,
+                "description": "Numeric ID of the Anaplan action to run.",
+            },
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "export_and_download": {
+        "description": "Run an Anaplan export action and download the resulting file. Use for export actions only — not for processes.",
+        "tags": ["action", "export", "bulk"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "params": {
+            "export_id": {
+                "type": "integer",
+                "required": True,
+                "description": "Numeric ID of the export action.",
+            },
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "upload_and_import": {
+        "description": "Upload file content to Anaplan and run an import action. Use for import actions only — not for processes.",
+        "tags": ["action", "import", "bulk"],
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "params": {
+            "file_id": {
+                "type": "integer",
+                "required": True,
+                "description": "Numeric ID of the Anaplan file to upload to.",
+            },
+            "content": {
+                "type": "string",
+                "required": True,
+                "description": "File content to upload.",
+            },
+            "import_id": {
+                "type": "integer",
+                "required": True,
+                "description": "Numeric ID of the import action to run.",
+            },
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+    "update_module_data": {
+        "description": "Write data to an Anaplan module transactionally. Max 100,000 cells or 15 MB per request. For larger updates use upload_and_import instead.",
+        "tags": ["update", "transactional"],
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "params": {
+            "module_id": {
+                "type": "integer",
+                "required": True,
+                "description": "Numeric ID of the module to update.",
+            },
+            "data": {
+                "type": "array",
+                "required": True,
+                "description": "List of cell update objects. See https://anaplan.docs.apiary.io/#UpdateModuleCellData.",
+            },
+            "workspace_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan model ID.",
+            },
+        },
+    },
+}
+
+
+def _score_catalog(intent: str, top_n: int = 5) -> list[dict]:
+    tokens = set(intent.lower().split())
+    scored = []
+    for action_id, entry in CATALOG.items():
+        text = (entry["description"] + " " + " ".join(entry["tags"])).lower()
+        score = sum(1 for t in tokens if t in text)
+        scored.append((score, action_id, entry))
+    scored.sort(key=lambda x: -x[0])
+    if not scored or scored[0][0] == 0:
+        return [
+            {
+                "id": k,
+                "description": v["description"],
+                "tags": v["tags"],
+                "annotations": v.get("annotations", {}),
+                "params": v["params"],
+            }
+            for k, v in CATALOG.items()
+        ]
+    return [
+        {
+            "id": aid,
+            "description": e["description"],
+            "tags": e["tags"],
+            "annotations": e.get("annotations", {}),
+            "params": e["params"],
+        }
+        for score, aid, e in scored[:top_n]
+        if score > 0
+    ]
+
 
 def _build_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
-    """Build an OAuth2 auth object with automatic token refresh.
-
-    Reads credentials from environment variables and decrypts the stored
-    token file. Called once at server startup via lifespan.
-    """
     client_id = os.environ["ANAPLAN_CLIENT_ID"]
     client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
     redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
@@ -34,11 +286,6 @@ def _build_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
 
 @asynccontextmanager
 async def lifespan(server: FastMCP):
-    """Build auth once at startup and share it across all tools and resources.
-
-    AnaplanRefreshTokenAuth handles token refresh automatically, so the single
-    auth instance stays valid for the lifetime of the server process.
-    """
     auth = _build_auth()
     yield {"auth": auth}
 
@@ -75,13 +322,13 @@ mcp = FastMCP(
     - Import actions load data from saved views or files into a list or module.
     - Export actions load data from moduiles or lists into a file.
     - Files can be uploaded to a model or downloaded from a model.
-    """
+    """,
 )
 
 
-@mcp.resource(
-    uri="anaplan://me",
-    tags={"user", "integration", "transactional"}
+@mcp.tool(
+    tags={"user", "integration", "transactional"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
 )
 def me(ctx: Context) -> dict:
     """Return the currently authenticated Anaplan user."""
@@ -93,246 +340,116 @@ def me(ctx: Context) -> dict:
     return client.audit.get_user().model_dump()
 
 
-@mcp.resource(
-    uri="anaplan://processes{?workspace_id,model_id}",
-    tags={"action", "process", "integration", "bulk"}
+@mcp.tool(
+    tags={"catalog", "integration"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
 )
-def get_processes(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Return all processes in an Anaplan model.
+def search_actions(intent: str) -> str:
+    """Search the Anaplan action catalog by natural language intent.
 
-    The Anaplan model is within an Anaplan workspace.
+    Returns matching action IDs, descriptions, and parameter schemas.
+    Use execute_action to run a chosen action.
+
+    :param intent: Natural language description of what you want to do.
     """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    return json.dumps([proc.model_dump() for proc in client.get_processes()])
+    return json.dumps(_score_catalog(intent), indent=2)
 
 
-@mcp.resource(
-    uri="anaplan://imports{?workspace_id,model_id}",
-    tags={"action", "import", "integration", "bulk"}
-)
-def get_imports(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Return all imports in an Anaplan model.
+@mcp.tool(tags={"catalog", "integration"})
+def execute_action(catalog_action: str, params: dict[str, Any], ctx: Context) -> Any:
+    """Execute a catalog action by its ID with the given parameters.
 
-    The Anaplan model is within an Anaplan workspace.
+    Use search_actions to discover available action IDs and their parameter schemas.
+
+    :param catalog_action: Action ID returned by search_actions.
+    :param params: Parameters dict matching the action's schema.
     """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    return json.dumps([proc.model_dump() for proc in client.get_imports()])
+    if catalog_action not in CATALOG:
+        return json.dumps(
+            {
+                "isError": True,
+                "message": f"Unknown action '{catalog_action}'. Use search_actions to find valid IDs.",
+            }
+        )
 
+    auth = ctx.lifespan_context["auth"]
+    workspace_id = params.get("workspace_id", os.environ["WORKSPACE_ID"])
+    model_id = params.get("model_id", os.environ["MODEL_ID"])
 
-@mcp.resource(
-    uri="anaplan://exports{?workspace_id,model_id}",
-    tags={"action", "import", "integration", "bulk"}
-)
-def get_exports(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Return all exports in an Anaplan model.
-
-    The Anaplan model is within an Anaplan workspace.
-    """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    return json.dumps([proc.model_dump() for proc in client.get_exports()])
-
-
-@mcp.resource(
-    uri="anaplan://workspaces{?search_pattern}",
-    tags={"workspace", "integration", "transactional"}
-)
-def get_workspaces(ctx: Context, search_pattern: str | None = None) -> str:
-    """Return all Anaplan workspaces.
-
-    :param search_pattern:  **Caution: This is an undocumented Feature and may behave
-           unpredictably. It requires the Tenant Admin role. For non-admin users, it is
-           ignored.** Optionally filter for specific workspaces. When provided,
-           case-insensitive matches workspaces with names containing this string.
-           You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
-           When None (default), returns all users.
-    """
-    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"])
-    return json.dumps(
-        [ws.model_dump() for ws in client.get_workspaces(search_pattern=search_pattern)]
-    )
-
-
-@mcp.resource(
-    uri="anaplan://workspaces/{workspace_id}/models{?only_in_workspace,search_pattern}",
-    tags={"model", "integration", "transactional"}
-)
-def get_models(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    only_in_workspace: bool = False,
-    search_pattern: str | None = None,
-) -> str:
-    """Return all Anaplan models.
-
-    :param only_in_workspace: If True, only lists models in the workspace provided when
-           instantiating the client. If a string is provided, only lists models in the workspace
-           with the given Id. If False (default), lists models in all workspaces the user
-    :param search_pattern:  **Caution: This is an undocumented Feature and may behave
-           unpredictably. It requires the Tenant Admin role. For non-admin users, it is
-           ignored.** Optionally filter for specific models. When provided,
-           case-insensitive matches model names containing this string.
-           You can use the wildcards `%` for 0-n characters, and `_` for exactly 1 character.
-           When None (default), returns all models.
-    """
-    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
-    return json.dumps(
-        [
-            model.model_dump()
-            for model in client.get_models(
-                only_in_workspace=only_in_workspace, search_pattern=search_pattern
+    match catalog_action:
+        case "get_processes":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-        ]
-    )
-
-
-@mcp.resource(
-    uri="anaplan://models/{model_id}/modules",
-    tags={"module", "integration", "transactional"}
-)
-def get_modules(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Return all modules in one Anaplan model."""
-    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
-    return json.dumps([model.model_dump() for model in client.tr.get_modules()])
-
-
-@mcp.resource(
-    uri="anaplan://models/{model_id}/views",
-    tags={"view", "integration", "transactional"}
-)
-def get_views(
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Return all views in one Anaplan model."""
-    client = anaplan_sdk.Client(auth=ctx.lifespan_context["auth"], workspace_id=workspace_id)
-    return json.dumps([model.model_dump() for model in client.tr.get_views()])
-
-
-@mcp.tool(
-    tags={"action", "integration", "bulk"}
-)
-def run_action(
-    action_id: int,
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> dict:
-    """Run an Anaplan action.
-
-    Actions can be imports, exports, processes or other actions like
-    delete, optimize, or sort.
-
-    This tool is not recommended for file
-    imports or exports or processes that include file imports or
-    exports.
-    """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    result = client.run_action(action_id)
-    return result.model_dump()
-
-
-@mcp.tool(
-    tags={"action", "export", "integration", "bulk"}
-)
-def export_and_download(
-    export_id: int,
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> bytes:
-    """Run an Anaplan export action and download the resulting file.
-
-    This tool is not recommended for process actions because it expects that the export_id and the file_id are the same.  While this is true for export actions, it is not true for processes.
-    """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    result = client.export_and_download(export_id)
-    return result
-
-
-@mcp.tool(
-    tags={"action", "import", "integration", "bulk"}
-)
-def upload_and_import(
-    file_id: int,
-    content: str | bytes,
-    import_id: int,
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> dict:
-    """Run an Anaplan import action and download the resulting file.
-
-    This tool is not recommended for process actions because it expects that the import_id and the file_id are the same.  While this is true for import actions, it is not true for processes.
-    """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    result = client.upload_and_import(
-        file_id=file_id, content=content, action_id=import_id
-    )
-    return result.model_dump()
-
-
-@mcp.tool(
-    tags={"update", "integration", "transactional"}
-)
-def update_module_data(
-    module_id: int,
-    data: list[dict[str, Any]],
-    ctx: Context,
-    workspace_id: str = os.environ["WORKSPACE_ID"],
-    model_id: str = os.environ["MODEL_ID"],
-) -> str:
-    """Write the passed items to the specified module. If successful,
-    the number of cells changed is returned, if only partially
-    successful or unsuccessful, the response with the according
-    details is returned instead.
-
-    **You can update a maximum of 100,000 cells or 15 MB of data
-    (whichever is lower) in a single request.** You must chunk
-    your data accordingly. This is not done by this SDK, since it
-    is discouraged. For larger imports, you should use the Bulk
-    API instead.
-
-    For more details see: https://anaplan.docs.apiary.io/#UpdateModuleCellData.
-    :param module_id: The ID of the Module.
-    :param data: The data to write to the Module.
-    :return: The number of cells changed or the response with the according error details.
-    """
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"], workspace_id=workspace_id, model_id=model_id
-    )
-    result = client.tr.update_module_data(module_id=module_id, data=data)
-    if isinstance(result, int):
-        return str(result)
-    return json.dumps(result)
+            return json.dumps([p.model_dump() for p in client.get_processes()])
+        case "get_imports":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            return json.dumps([p.model_dump() for p in client.get_imports()])
+        case "get_exports":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            return json.dumps([p.model_dump() for p in client.get_exports()])
+        case "get_workspaces":
+            client = anaplan_sdk.Client(auth=auth)
+            return json.dumps(
+                [
+                    ws.model_dump()
+                    for ws in client.get_workspaces(
+                        search_pattern=params.get("search_pattern")
+                    )
+                ]
+            )
+        case "get_models":
+            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
+            return json.dumps(
+                [
+                    m.model_dump()
+                    for m in client.get_models(
+                        only_in_workspace=params.get("only_in_workspace", False),
+                        search_pattern=params.get("search_pattern"),
+                    )
+                ]
+            )
+        case "get_modules":
+            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
+            return json.dumps([m.model_dump() for m in client.tr.get_modules()])
+        case "get_views":
+            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
+            return json.dumps([m.model_dump() for m in client.tr.get_views()])
+        case "run_action":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            result = client.run_action(params["action_id"])
+            return json.dumps(result.model_dump())
+        case "export_and_download":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            return client.export_and_download(params["export_id"])
+        case "upload_and_import":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            result = client.upload_and_import(
+                file_id=params["file_id"],
+                content=params["content"],
+                action_id=params["import_id"],
+            )
+            return json.dumps(result.model_dump())
+        case "update_module_data":
+            client = anaplan_sdk.Client(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            result = client.tr.update_module_data(
+                module_id=params["module_id"], data=params["data"]
+            )
+            if isinstance(result, int):
+                return str(result)
+            return json.dumps(result)
 
 
 if __name__ == "__main__":
