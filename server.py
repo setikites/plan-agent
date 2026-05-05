@@ -1,75 +1,84 @@
 import json
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Any
+import keyring
+from typing import Any, Annotated
 
 import anaplan_sdk
+from anaplan_sdk.models import (
+    LineItem,
+    User,
+    View
+)
 from dotenv import load_dotenv
 from fastmcp import Context, FastMCP
 
-import crypto
-
-TOKEN_PATH = Path(".token.json")
-FILENAME = Path(".token")
 load_dotenv()
 
 CATALOG: dict[str, dict] = {
     "get_processes": {
         "description": "Return all processes in an Anaplan model. Processes combine import, export, delete, or sort actions in sequence.",
         "tags": ["action", "process", "bulk"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {
+            "readOnlyHint": True,
+            "idempotentHint": True,
+            "destructiveHint": False,
+            "openWorldHint": True
+        },
         "params": {
             "workspace_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan workspace ID. Defaults to WORKSPACE_ID env var.",
+                "description": "ID for Anaplan workspace containing the model. Defaults to WORKSPACE_ID env var.",
             },
             "model_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan model ID. Defaults to MODEL_ID env var.",
+                "description": "ID for Anaplan model containing processes. Defaults to MODEL_ID env var.",
             },
         },
     },
     "get_imports": {
         "description": "Return all import actions in an Anaplan model. Import actions load data from files or views into a list or module.",
         "tags": ["action", "import", "bulk"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "workspace_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan workspace ID.",
+                "description": "ID for Anaplan workspace containint the model.",
             },
             "model_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan model ID.",
+                "description": "ID for Anaplan model containing imports.",
             },
         },
     },
     "get_exports": {
         "description": "Return all export actions in an Anaplan model. Export actions write data from modules or lists to a file.",
         "tags": ["action", "export", "bulk"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "workspace_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan workspace ID.",
+                "description": "ID for Anaplan workspace containint the model.",
             },
             "model_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan model ID.",
+                "description": "ID for Anaplan model containing exports.",
             },
         },
     },
     "get_workspaces": {
         "description": "Return all Anaplan workspaces the user can access.",
         "tags": ["workspace"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "search_pattern": {
                 "type": "string",
@@ -81,12 +90,13 @@ CATALOG: dict[str, dict] = {
     "get_models": {
         "description": "Return all Anaplan models, optionally filtered to a single workspace.",
         "tags": ["model"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "workspace_id": {
                 "type": "string",
                 "required": False,
-                "description": "Anaplan workspace ID.",
+                "description": "ID for Anaplan workspace containing models.",
             },
             "only_in_workspace": {
                 "type": "boolean",
@@ -96,14 +106,15 @@ CATALOG: dict[str, dict] = {
             "search_pattern": {
                 "type": "string",
                 "required": False,
-                "description": "Optional name filter. Requires Tenant Admin role.",
+                "description": "Optional name filter. Supports % and _ wildcards. Requires Tenant Admin role.",
             },
         },
     },
     "get_modules": {
         "description": "Return all modules in an Anaplan model. Modules contain line items and cells.",
         "tags": ["module", "transactional"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "workspace_id": {
                 "type": "string",
@@ -120,7 +131,8 @@ CATALOG: dict[str, dict] = {
     "get_views": {
         "description": "Return all views in an Anaplan model. Views organize module dimensions and may filter data.",
         "tags": ["view", "transactional"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "workspace_id": {
                 "type": "string",
@@ -134,10 +146,34 @@ CATALOG: dict[str, dict] = {
             },
         },
     },
+    "get_line_items": {
+        "description": "Return all the line items in an Anaplan model. If the module ID is specified, only show the line items for that module.",
+        "tags": ["line_item", "transactional"],
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
+        "params": {
+            "workspace_id": {
+                "type": "string",
+                "required": True,
+                "description": "Anaplan workspace ID.",
+            },
+            "model_id": {
+                "type": "string",
+                "required": True,
+                "description": "Anaplan model ID.",
+            },
+            "module_id": {
+                "type": "string",
+                "required": False,
+                "description": "Anaplan module ID.",
+            },
+        },
+    },
     "run_action": {
         "description": "Run an Anaplan action by numeric ID. Supports imports, exports, processes, delete, optimize, and sort. Not recommended for file-based imports/exports or processes that include file operations.",
         "tags": ["action", "bulk"],
-        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True,
+            "openWorldHint": True},
         "params": {
             "action_id": {
                 "type": "integer",
@@ -159,7 +195,8 @@ CATALOG: dict[str, dict] = {
     "export_and_download": {
         "description": "Run an Anaplan export action and download the resulting file. Use for export actions only — not for processes.",
         "tags": ["action", "export", "bulk"],
-        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+        "annotations": {"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False,
+            "openWorldHint": True},
         "params": {
             "export_id": {
                 "type": "integer",
@@ -181,7 +218,8 @@ CATALOG: dict[str, dict] = {
     "upload_and_import": {
         "description": "Upload file content to Anaplan and run an import action. Use for import actions only — not for processes.",
         "tags": ["action", "import", "bulk"],
-        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True,
+            "openWorldHint": True},
         "params": {
             "file_id": {
                 "type": "integer",
@@ -213,7 +251,8 @@ CATALOG: dict[str, dict] = {
     "update_module_data": {
         "description": "Write data to an Anaplan module transactionally. Max 100,000 cells or 15 MB per request. For larger updates use upload_and_import instead.",
         "tags": ["update", "transactional"],
-        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True},
+        "annotations": {"readOnlyHint": False, "idempotentHint": False, "destructiveHint": True,
+            "openWorldHint": True},
         "params": {
             "module_id": {
                 "type": "integer",
@@ -224,6 +263,48 @@ CATALOG: dict[str, dict] = {
                 "type": "array",
                 "required": True,
                 "description": "List of cell update objects. See https://anaplan.docs.apiary.io/#UpdateModuleCellData.",
+                "items": {
+                    "properties": {
+                        "lineItemId": {
+                            "type": "string"
+                        },
+                        "dimensions": {
+                            "items": {
+                                "properties": {
+                                    "dimensionId": {
+                                        "type": "string"
+                                    },
+                                    "itemId": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "dimensionId",
+                                    "itemId"
+                                ],
+                                "type": "object"
+                            },
+                            "type": "array"
+                        },
+                        "value": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "string"
+                                }
+                            ],
+                            "title": "Value"
+                        }
+                    },
+                    "required": [
+                        "lineItemId",
+                        "dimensions",
+                        "value"
+                    ],
+                    "type": "object"
+                }
             },
             "workspace_id": {
                 "type": "string",
@@ -276,8 +357,9 @@ def _build_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
     client_id = os.environ["ANAPLAN_CLIENT_ID"]
     client_secret = os.environ["ANAPLAN_CLIENT_SECRET"]
     redirect_uri = os.environ["ANAPLAN_REDIRECT_URI"]
-    my_key = crypto.load_key()
-    json_str = crypto.read_and_decrypt(FILENAME, my_key)
+    part_a = keyring.get_password("Anaplan_a", os.getlogin ())
+    part_b = keyring.get_password("Anaplan_b", os.getlogin ())
+    json_str = part_a + part_b  # windows workaround
     token = json.loads(json_str)
     return anaplan_sdk.AnaplanRefreshTokenAuth(
         client_id, client_secret, redirect_uri, token
@@ -287,7 +369,9 @@ def _build_auth() -> anaplan_sdk.AnaplanRefreshTokenAuth:
 @asynccontextmanager
 async def lifespan(server: FastMCP):
     auth = _build_auth()
-    yield {"auth": auth}
+    yield {
+        "auth": auth
+    }
 
 
 mcp = FastMCP(
@@ -327,24 +411,110 @@ mcp = FastMCP(
 
 
 @mcp.tool(
+    title="Who am I",
+    description="Return information about the currently authenticated Anaplan user.",
     tags={"user", "integration", "transactional"},
-    annotations={"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+    annotations={
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "destructiveHint": False,
+        "openWorldHint": True
+    },
 )
-def me(ctx: Context) -> dict:
-    """Return the currently authenticated Anaplan user."""
-    client = anaplan_sdk.Client(
-        auth=ctx.lifespan_context["auth"],
-        workspace_id=os.environ["WORKSPACE_ID"],
-        model_id=os.environ["MODEL_ID"],
+async def me(ctx: Context) -> User:
+    client = anaplan_sdk.AsyncClient(
+        auth = ctx.lifespan_context["auth"]
     )
-    return client.audit.get_user().model_dump()
+    result = await client.audit.get_user()
+    return result
+
+@mcp.tool (
+    title="Read view data",
+    description="retrieve the cell data for a view. You can either query for the default page, or provide page selectors to query for other pages. This call returns data as JSON.",
+    tags={"read", "integration", "transactional"},
+    annotations={
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "destructiveHint": False,
+        "openWorldHint": True
+    },
+)
+async def get_view_data (
+          view_id: Annotated[int, "ID of the view containing data to read."],
+          workspace_id: Annotated[str, "ID of Anaplan workspace containing the model."],
+          model_id: Annotated[str, "ID of the Anaplan model containing the view."],
+          ctx: Context
+) -> dict[str, Any]:
+    """Get view data as JSON.
+
+    :param view_id: the ID of a view or module to export
+    :param workspace_id: the workspace containing this model
+    :param model_id: the model containing this view
+    """
+    headers = {
+        "accept": "application/json"
+    }
+    client = anaplan_sdk.AsyncClient(
+        auth = ctx.lifespan_context["auth"],
+        workspace_id=workspace_id,
+        model_id=model_id
+    )
+    res = await client._http.get (
+        f"{client._url}/views/{view_id}/data?format=v1",
+        headers=headers
+    )
+    return res
+
+@mcp.tool (
+    title="Get information about a view",
+    description="Use this call to retrieve the name, IDs, and lists of names for the dimensions (columns, pages, rows) on a specified view.",
+    tags={"view", "integration", "transactional"},
+    annotations={
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "destructiveHint": False,
+        "openWorldHint": True
+    },
+)
+async def get_view_info (
+          view_id: Annotated[int, "ID of the view."],
+          workspace_id: Annotated[str, "ID of Anaplan workspace containing the model."],
+          model_id: Annotated[str, "ID of the Anaplan model containing the view."],
+          ctx: Context
+) -> dict[str, Any]:
+    """Get view data as JSON.
+
+    :param view_id: the ID of a view or module to export
+    :param workspace_id: the workspace containing this model
+    :param model_id: the model containing this view
+    """
+    client = anaplan_sdk.AsyncClient(
+        auth = ctx.lifespan_context["auth"],
+        workspace_id=workspace_id,
+        model_id=model_id
+    )
+    res = await client._http.get (
+        f"{client._url}/views/{view_id}"
+    )
+    return res
+
+  
 
 
 @mcp.tool(
+    title="Search Anaplan actions",
+    description="Search the Anaplan action catalog by natural language intent.",
     tags={"catalog", "integration"},
-    annotations={"readOnlyHint": True, "idempotentHint": True, "destructiveHint": False},
+    annotations={
+        "readOnlyHint": True,
+        "idempotentHint": True,
+        "destructiveHint": False,
+        "openWorldHint": False
+    },
 )
-def search_actions(intent: str) -> str:
+def search_actions(
+        intent: Annotated[str, "Natural language description of what you want to do."]
+) -> str:
     """Search the Anaplan action catalog by natural language intent.
 
     Returns matching action IDs, descriptions, and parameter schemas.
@@ -355,8 +525,19 @@ def search_actions(intent: str) -> str:
     return json.dumps(_score_catalog(intent), indent=2)
 
 
-@mcp.tool(tags={"catalog", "integration"})
-def execute_action(catalog_action: str, params: dict[str, Any], ctx: Context) -> Any:
+@mcp.tool(
+    title="Run selected Anaplan action",
+    description="Execute a catalog action by its ID with the given parameters.",
+    tags={"catalog", "integration"},
+    annotations={
+        "openWorldHint": False
+    },
+)
+async def execute_action(
+        catalog_action: Annotated[str, "Action ID returned by search_actions"],
+        params: Annotated[dict[str, Any], "Parameters dict matching the action's schema"],
+        ctx: Context
+) -> Any:
     """Execute a catalog action by its ID with the given parameters.
 
     Use search_actions to discover available action IDs and their parameter schemas.
@@ -378,78 +559,89 @@ def execute_action(catalog_action: str, params: dict[str, Any], ctx: Context) ->
 
     match catalog_action:
         case "get_processes":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            return json.dumps([p.model_dump() for p in client.get_processes()])
+            return json.dumps([p.model_dump() for p in await client.get_processes()])
         case "get_imports":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            return json.dumps([p.model_dump() for p in client.get_imports()])
+            return json.dumps([p.model_dump() for p in await client.get_imports()])
         case "get_exports":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            return json.dumps([p.model_dump() for p in client.get_exports()])
+            return json.dumps([p.model_dump() for p in await client.get_exports()])
         case "get_workspaces":
-            client = anaplan_sdk.Client(auth=auth)
+            client = anaplan_sdk.AsyncClient(auth=auth)
             return json.dumps(
                 [
                     ws.model_dump()
-                    for ws in client.get_workspaces(
+                    for ws in await client.get_workspaces(
                         search_pattern=params.get("search_pattern")
                     )
                 ]
             )
         case "get_models":
-            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
+            client = anaplan_sdk.AsyncClient(auth=auth, workspace_id=workspace_id)
             return json.dumps(
                 [
                     m.model_dump()
-                    for m in client.get_models(
+                    for m in await client.get_models(
                         only_in_workspace=params.get("only_in_workspace", False),
                         search_pattern=params.get("search_pattern"),
                     )
                 ]
             )
         case "get_modules":
-            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
-            return json.dumps([m.model_dump() for m in client.tr.get_modules()])
+            client = anaplan_sdk.AsyncClient(auth=auth, workspace_id=workspace_id, model_id=model_id)
+            return json.dumps([m.model_dump() for m in await client.tr.get_modules()])
         case "get_views":
-            client = anaplan_sdk.Client(auth=auth, workspace_id=workspace_id)
-            return json.dumps([m.model_dump() for m in client.tr.get_views()])
+            client = anaplan_sdk.AsyncClient(auth=auth, workspace_id=workspace_id, model_id=model_id)
+            #return json.dumps([m.model_dump() for m in await client.tr.get_views()])
+            result:list[View] = await client.tr.get_views()
+            return result
         case "run_action":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            result = client.run_action(params["action_id"])
+            result = await client.run_action(params["action_id"])
             return json.dumps(result.model_dump())
         case "export_and_download":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            return client.export_and_download(params["export_id"])
+            return await client.export_and_download(params["export_id"])
         case "upload_and_import":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            result = client.upload_and_import(
+            result = await client.upload_and_import(
                 file_id=params["file_id"],
                 content=params["content"],
                 action_id=params["import_id"],
             )
             return json.dumps(result.model_dump())
         case "update_module_data":
-            client = anaplan_sdk.Client(
+            client = anaplan_sdk.AsyncClient(
                 auth=auth, workspace_id=workspace_id, model_id=model_id
             )
-            result = client.tr.update_module_data(
-                module_id=params["module_id"], data=params["data"]
+            result = await client.tr.update_module_data(
+                module_id=params["module_id"],
+                data=params["data"],
             )
             if isinstance(result, int):
                 return str(result)
             return json.dumps(result)
+        case "get_line_items":
+            client = anaplan_sdk.AsyncClient(
+                auth=auth, workspace_id=workspace_id, model_id=model_id
+            )
+            result:list[LineItem] = await client.tr.get_line_items(
+                only_module_id=params["module_id"]
+            )
+            return result
 
 
 if __name__ == "__main__":
