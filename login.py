@@ -7,19 +7,17 @@ the MCP server.
 """
 
 import json
+import keyring
 import os
-from pathlib import Path
 
 import anaplan_sdk
 from dotenv import load_dotenv
 
-import crypto
-
-FILENAME = Path(".token")
 load_dotenv()
 CLIENT_ID = os.environ["ANAPLAN_CLIENT_ID"]
 CLIENT_SECRET = os.environ["ANAPLAN_CLIENT_SECRET"]
 REDIRECT_URI = os.environ["ANAPLAN_REDIRECT_URI"]
+SPLIT = 1240                    # MS Windows len(password) < 1280
 
 
 def login():
@@ -34,10 +32,11 @@ def login():
     )
     token = refresh_auth._oauth_token
     json_data = json.dumps(token)
-    my_key = crypto.load_key()
-    crypto.encrypt_and_write(FILENAME, json_data, my_key)
+    part_a = json_data[:SPLIT]
+    part_b = json_data[SPLIT:]
+    keyring.set_password("Anaplan_a", os.getlogin (), part_a)
+    keyring.set_password("Anaplan_b", os.getlogin (), part_b)
 
 
 if __name__ == "__main__":
-    crypto.generate_key()
     login()
